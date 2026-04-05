@@ -104,6 +104,11 @@ class _HomePageState extends State<HomePage> {
         title: Text('💳 记账 ${prov.myRole != null ? "(${prov.myRole})" : ""}'),
         centerTitle: true,
         actions: [
+          if (prov.syncStatus.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(prov.syncStatus, style: TextStyle(fontSize: 11, color: prov.syncStatus == '同步失败' ? Colors.red : Colors.grey[500])),
+            ),
           if (prov.syncing)
             const Padding(
               padding: EdgeInsets.all(12),

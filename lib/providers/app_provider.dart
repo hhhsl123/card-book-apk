@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/data.dart';
@@ -9,6 +10,7 @@ class AppProvider extends ChangeNotifier {
   String? myRole;
   bool syncing = false;
   String syncStatus = '';
+  Timer? _autoSyncTimer;
 
   static int _idCounter = 0;
   static final _rng = Random();
@@ -18,7 +20,6 @@ class AppProvider extends ChangeNotifier {
     return '${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}_${_idCounter.toRadixString(36)}_${_rng.nextInt(0xFFFF).toRadixString(36)}';
   }
 
-  /// Fix duplicate card IDs in existing data
   bool _repairDuplicateIds() {
     bool changed = false;
     for (final batch in data.batches) {
@@ -46,6 +47,38 @@ class AppProvider extends ChangeNotifier {
     if (_repairDuplicateIds()) {
       await _save();
     }
+    _startAutoSync();
+  }
+
+  void _startAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!syncing) {
+        _silentPull();
+      }
+    });
+  }
+
+  /// Pull without showing loading spinner (background refresh)
+  Future<void> _silentPull() async {
+    try {
+      final remote = await SyncService.pull();
+      if (remote != null) {
+        data = remote;
+        if (_repairDuplicateIds()) {
+          await SyncService.merge(data);
+        }
+        await StorageService.saveData(data);
+        syncStatus = '已同步';
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _autoSyncTimer?.cancel();
+    super.dispose();
   }
 
   // ---- Role ----
@@ -75,7 +108,6 @@ class AppProvider extends ChangeNotifier {
   Future<void> _save() async {
     await StorageService.saveData(data);
     notifyListeners();
-    // Merge to cloud in background
     syncing = true;
     syncStatus = '同步中...';
     notifyListeners();
@@ -183,7 +215,6 @@ class AppProvider extends ChangeNotifier {
     await _save();
   }
 
-  /// Pick cards: copy to clipboard + mark as sold
   Future<void> pickCards(String batchId, List<CardItem> cards) async {
     final seller = myRole ?? '未知';
     final now = DateTime.now().millisecondsSinceEpoch;
