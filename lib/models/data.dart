@@ -101,21 +101,31 @@ class Batch {
 class AppData {
   List<String> persons;
   List<Batch> batches;
+  List<String> deletedBatchIds;
+  List<String> deletedCardIds;
 
   AppData({
     List<String>? persons,
     List<Batch>? batches,
+    List<String>? deletedBatchIds,
+    List<String>? deletedCardIds,
   })  : persons = persons ?? ['星河', '石'],
-        batches = batches ?? [];
+        batches = batches ?? [],
+        deletedBatchIds = deletedBatchIds ?? [],
+        deletedCardIds = deletedCardIds ?? [];
 
   Map<String, dynamic> toJson() => {
     'persons': persons,
     'batches': batches.map((b) => b.toJson()).toList(),
+    'deletedBatchIds': deletedBatchIds,
+    'deletedCardIds': deletedCardIds,
   };
 
   factory AppData.fromJson(Map<String, dynamic> j) => AppData(
     persons: (j['persons'] as List?)?.cast<String>() ?? ['星河', '石'],
     batches: (j['batches'] as List?)?.map((b) => Batch.fromJson(b)).toList() ?? [],
+    deletedBatchIds: (j['deletedBatchIds'] as List?)?.cast<String>() ?? [],
+    deletedCardIds: (j['deletedCardIds'] as List?)?.cast<String>() ?? [],
   );
 
   String toJsonString() => jsonEncode(toJson());

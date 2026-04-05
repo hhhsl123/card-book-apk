@@ -80,6 +80,9 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> deleteBatch(String batchId) async {
     data.batches.removeWhere((b) => b.id == batchId);
+    if (!data.deletedBatchIds.contains(batchId)) {
+      data.deletedBatchIds.add(batchId);
+    }
     await _save();
   }
 
@@ -114,12 +117,20 @@ class AppProvider extends ChangeNotifier {
   Future<void> deleteCard(String batchId, String cardId) async {
     final batch = data.batches.firstWhere((b) => b.id == batchId);
     batch.cards.removeWhere((c) => c.id == cardId);
+    if (!data.deletedCardIds.contains(cardId)) {
+      data.deletedCardIds.add(cardId);
+    }
     await _save();
   }
 
   Future<void> deleteCards(String batchId, Set<String> cardIds) async {
     final batch = data.batches.firstWhere((b) => b.id == batchId);
     batch.cards.removeWhere((c) => cardIds.contains(c.id));
+    for (final id in cardIds) {
+      if (!data.deletedCardIds.contains(id)) {
+        data.deletedCardIds.add(id);
+      }
+    }
     await _save();
   }
 
