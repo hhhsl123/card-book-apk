@@ -105,12 +105,21 @@ class AppProvider extends ChangeNotifier {
     for (final c in batch.cards) {
       if (cardIds.contains(c.id)) {
         c.bad = true;
-        c.sold = false;
-        c.soldBy = null;
-        c.soldPrice = 0;
         c.updatedAt = now;
       }
     }
+    await _save();
+  }
+
+  Future<void> deleteCard(String batchId, String cardId) async {
+    final batch = data.batches.firstWhere((b) => b.id == batchId);
+    batch.cards.removeWhere((c) => c.id == cardId);
+    await _save();
+  }
+
+  Future<void> deleteCards(String batchId, Set<String> cardIds) async {
+    final batch = data.batches.firstWhere((b) => b.id == batchId);
+    batch.cards.removeWhere((c) => cardIds.contains(c.id));
     await _save();
   }
 

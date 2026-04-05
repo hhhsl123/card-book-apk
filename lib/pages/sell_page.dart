@@ -21,10 +21,14 @@ class _SellPageState extends State<SellPage> {
     final batches = prov.data.batches;
     final batch = _batchId != null ? batches.where((b) => b.id == _batchId).firstOrNull : null;
 
+    final hasUnsoldSelected = _selected.isNotEmpty && batch != null &&
+        batch.cards.any((c) => _selected.contains(c.id) && !c.sold && !c.bad);
+    final hasSoldSelected = _selected.isNotEmpty && batch != null &&
+        batch.cards.any((c) => _selected.contains(c.id) && (c.sold || c.bad));
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Batch selector
         DropdownButtonFormField<String>(
           value: _batchId,
           decoration: const InputDecoration(labelText: '选择批次', border: OutlineInputBorder(), isDense: true),
@@ -37,7 +41,6 @@ class _SellPageState extends State<SellPage> {
         const SizedBox(height: 16),
 
         if (batch != null) ...[
-          // Card grid
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -51,7 +54,6 @@ class _SellPageState extends State<SellPage> {
                 card: c,
                 selected: _selected.contains(c.id),
                 onTap: () {
-                  if (c.bad) return;
                   setState(() {
                     if (_selected.contains(c.id)) {
                       _selected.remove(c.id);
@@ -65,7 +67,6 @@ class _SellPageState extends State<SellPage> {
           ),
           const SizedBox(height: 16),
 
-          // Action panel
           if (_selected.isNotEmpty)
             Card(
               color: Colors.green.shade50,
@@ -79,16 +80,22 @@ class _SellPageState extends State<SellPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        FilledButton.icon(
-                          icon: const Icon(Icons.check),
-                          label: const Text('确认卖出'),
-                          onPressed: () async {
-                            final seller = prov.myRole ?? '未知';
-                            await prov.sellCards(_batchId!, _selected, seller);
-                            _msg('✅ 已标记 ${_selected.length} 张卡为已卖');
-                            setState(() => _selected.clear());
-                          },
-                        ),
+                        if (hasUnsoldSelected)
+                          FilledButton.icon(
+                            icon: const Icon(Icons.check),
+                            label: const Text('确认卖出'),
+                            onPressed: () async {
+                              final unsoldIds = batch.cards
+                                  .where((c) => _selected.contains(c.id) && !c.sold && !c.bad)
+                                  .map((c) => c.id)
+                                  .toSet();
+                              if (unsoldIds.isEmpty) return;
+                              final seller = prov.myRole ?? '未知';
+                              await prov.sellCards(_batchId!, unsoldIds, seller);
+                              _msg('已标记 ${unsoldIds.length} 张卡为已卖');
+                              setState(() => _selected.clear());
+                            },
+                          ),
                         FilledButton.icon(
                           icon: const Icon(Icons.warning),
                           label: const Text('标记坏卡'),
@@ -104,20 +111,21 @@ class _SellPageState extends State<SellPage> {
                             ));
                             if (ok == true) {
                               await prov.markBad(_batchId!, _selected);
-                              _msg('⚠️ 已标记 ${_selected.length} 张坏卡');
+                              _msg('已标记 ${_selected.length} 张坏卡');
                               setState(() => _selected.clear());
                             }
                           },
                         ),
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.undo),
-                          label: const Text('撤销'),
-                          onPressed: () async {
-                            await prov.undoCards(_batchId!, _selected);
-                            _msg('↩️ 已撤销 ${_selected.length} 张卡');
-                            setState(() => _selected.clear());
-                          },
-                        ),
+                        if (hasSoldSelected)
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.undo),
+                            label: const Text('撤销'),
+                            onPressed: () async {
+                              await prov.undoCards(_batchId!, _selected);
+                              _msg('已撤销 ${_selected.length} 张卡');
+                              setState(() => _selected.clear());
+                            },
+                          ),
                       ],
                     ),
                   ],

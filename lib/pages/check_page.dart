@@ -105,15 +105,30 @@ class _CheckPageState extends State<CheckPage> {
     final unsold = batch?.cards.where((c) => !c.sold && !c.bad).toList() ?? [];
     final badCards = batch?.cards.where((c) => c.bad).toList() ?? [];
 
+    final sortedBatches = List.of(batches)..sort((a, b) {
+      final aHasUnsold = a.cards.any((c) => !c.sold && !c.bad);
+      final bHasUnsold = b.cards.any((c) => !c.sold && !c.bad);
+      if (aHasUnsold && !bHasUnsold) return -1;
+      if (!aHasUnsold && bHasUnsold) return 1;
+      return b.date.compareTo(a.date);
+    });
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         DropdownButtonFormField<String>(
           value: _batchId,
           decoration: const InputDecoration(labelText: '选择批次', border: OutlineInputBorder(), isDense: true),
-          items: batches.map((b) {
+          items: sortedBatches.map((b) {
             final remain = b.cards.where((c) => !c.sold && !c.bad).length;
-            return DropdownMenuItem(value: b.id, child: Text('${b.name} (剩${remain}张)'));
+            final allDone = remain == 0 && b.cards.isNotEmpty;
+            return DropdownMenuItem(
+              value: b.id,
+              child: Text(
+                '${b.name} (${allDone ? "已卖完" : "剩${remain}张"})',
+                style: TextStyle(color: allDone ? Colors.grey : null),
+              ),
+            );
           }).toList(),
           onChanged: (v) => setState(() { _batchId = v; _comboResult = null; }),
         ),

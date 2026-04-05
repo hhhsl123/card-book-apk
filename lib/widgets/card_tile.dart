@@ -17,17 +17,21 @@ class CardTile extends StatelessWidget {
     Color bgColor = Colors.white;
     double opacity = 1.0;
 
-    if (selected) {
-      borderColor = Theme.of(context).colorScheme.primary;
-      bgColor = Theme.of(context).colorScheme.primary.withValues(alpha: 0.08);
-    }
     if (isBad) {
       borderColor = Colors.red;
       bgColor = Colors.red.shade50;
       opacity = 0.6;
     } else if (isSold) {
-      opacity = 0.5;
+      opacity = 0.7;
       bgColor = Colors.grey.shade100;
+    }
+
+    if (selected) {
+      borderColor = Theme.of(context).colorScheme.primary;
+      if (!isBad) {
+        bgColor = Theme.of(context).colorScheme.primary.withValues(alpha: 0.15);
+      }
+      opacity = 1.0;
     }
 
     return GestureDetector(
