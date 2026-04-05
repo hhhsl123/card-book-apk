@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/data.dart';
 import '../services/sync.dart';
@@ -9,11 +10,42 @@ class AppProvider extends ChangeNotifier {
   bool syncing = false;
   String syncStatus = '';
 
+  static int _idCounter = 0;
+  static final _rng = Random();
+
+  String _uniqueId() {
+    _idCounter++;
+    return '${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}_${_idCounter.toRadixString(36)}_${_rng.nextInt(0xFFFF).toRadixString(36)}';
+  }
+
+  /// Fix duplicate card IDs in existing data
+  bool _repairDuplicateIds() {
+    bool changed = false;
+    for (final batch in data.batches) {
+      final seen = <String>{};
+      for (final card in batch.cards) {
+        if (!seen.add(card.id)) {
+          final newId = _uniqueId();
+          card.id = newId;
+          card.updatedAt = DateTime.now().millisecondsSinceEpoch;
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
   Future<void> init() async {
     data = await StorageService.loadData();
     myRole = await StorageService.getRole();
+    if (_repairDuplicateIds()) {
+      await StorageService.saveData(data);
+    }
     notifyListeners();
     await pullFromCloud();
+    if (_repairDuplicateIds()) {
+      await _save();
+    }
   }
 
   // ---- Role ----

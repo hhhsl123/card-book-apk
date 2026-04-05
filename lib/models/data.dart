@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 class CardItem {
-  final String id;
+  String id;
   String label;
   String secret;
   double face;
