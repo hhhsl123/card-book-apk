@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
@@ -17,13 +18,19 @@ class _BatchPageState extends State<BatchPage> {
   final _cardsCtrl = TextEditingController();
   String? _expandedBatchId;
 
+  static int _counter = 0;
+  static final _rng = Random();
+
   @override
   void initState() {
     super.initState();
     _dateCtrl.text = DateTime.now().toIso8601String().substring(0, 10);
   }
 
-  String _genId() => '${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}${(DateTime.now().microsecond).toRadixString(36)}';
+  String _genId() {
+    _counter++;
+    return '${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}_${_counter.toRadixString(36)}_${_rng.nextInt(0xFFFF).toRadixString(36)}';
+  }
 
   Future<void> _createBatch() async {
     final name = _nameCtrl.text.trim();
