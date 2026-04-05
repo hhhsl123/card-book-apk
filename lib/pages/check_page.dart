@@ -93,9 +93,11 @@ class _CheckPageState extends State<CheckPage> {
       await Clipboard.setData(ClipboardData(text: text));
       await prov.pickCards(_batchId!, cards);
       setState(() => _comboResult = null);
-      _msg('✅ 已复制并标记 ${cards.length} 张卡为已卖');
+      _msg('已复制并标记 ${cards.length} 张卡为已卖');
     }
   }
+
+  String _fmtFace(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
 
   @override
   Widget build(BuildContext context) {
@@ -135,35 +137,29 @@ class _CheckPageState extends State<CheckPage> {
 
         if (batch != null) ...[
           const SizedBox(height: 12),
-          // Info bar
+
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Row(children: [
-                Text('📅 ${batch.batchDate}'),
-                const SizedBox(width: 12),
-                Text('💱 ${batch.rate}'),
-                const SizedBox(width: 12),
-                Text('📦 ${batch.cards.length}张'),
-              ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('📅 ${batch.batchDate}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                    const SizedBox(width: 12),
+                    Text('💱 ${batch.rate}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                    const SizedBox(width: 12),
+                    Text('📦 ${batch.cards.length}张', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(
+                    '剩余 ${unsold.length} 张 · 总面值 ¥${_fmtFace(unsold.fold<double>(0, (s, c) => s + c.face))} · 成本 ¥${_fmtFace(unsold.fold<double>(0, (s, c) => s + c.face) * batch.rate)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-
-          // Summary + copy all
-          Row(children: [
-            Text('剩余 ${unsold.length} 张未卖', style: const TextStyle(fontWeight: FontWeight.bold)),
-            const Spacer(),
-            TextButton.icon(
-              icon: const Icon(Icons.copy, size: 16),
-              label: const Text('复制全部'),
-              onPressed: unsold.isEmpty ? null : () {
-                final text = unsold.map((c) => c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label).join('\n');
-                Clipboard.setData(ClipboardData(text: text));
-                _msg('已复制 ${unsold.length} 张卡');
-              },
-            ),
-          ]),
           const SizedBox(height: 8),
 
           // Combo section
@@ -174,7 +170,7 @@ class _CheckPageState extends State<CheckPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('🧩 组合凑面值', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('组合凑面值', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Row(children: [
                     Expanded(child: TextField(
@@ -188,7 +184,7 @@ class _CheckPageState extends State<CheckPage> {
                   if (_comboResult != null) ...[
                     const SizedBox(height: 12),
                     Row(children: [
-                      Text('✅ ${_comboResult!.length}张 = ¥${_comboResult!.fold<double>(0, (s, c) => s + c.face).toStringAsFixed(0)}',
+                      Text('${_comboResult!.length}张 = ¥${_fmtFace(_comboResult!.fold<double>(0, (s, c) => s + c.face))}',
                         style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                       const Spacer(),
                       FilledButton.icon(
@@ -208,7 +204,7 @@ class _CheckPageState extends State<CheckPage> {
                             if (c.secret.isNotEmpty) Text(c.secret, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Theme.of(context).colorScheme.primary)),
                           ],
                         )),
-                        Text('¥${c.face.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                        Text('面值¥${_fmtFace(c.face)}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
                       ]),
                     )),
                   ],
@@ -218,33 +214,23 @@ class _CheckPageState extends State<CheckPage> {
           ),
           const SizedBox(height: 12),
 
-          // Card list
+          // Card list — show face value & rate, keep pick, remove copy
           ...unsold.map((c) => Card(
             margin: const EdgeInsets.only(bottom: 4),
             child: ListTile(
               dense: true,
               title: Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
-              subtitle: c.secret.isNotEmpty ? Text(c.secret, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Theme.of(context).colorScheme.primary)) : null,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('¥${c.face.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[500])),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.send, size: 18),
-                    tooltip: '提卡',
-                    onPressed: () => _pickCards([c]),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 18),
-                    tooltip: '复制',
-                    onPressed: () {
-                      final text = c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label;
-                      Clipboard.setData(ClipboardData(text: text));
-                      _msg('已复制');
-                    },
-                  ),
+                  if (c.secret.isNotEmpty) Text(c.secret, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Theme.of(context).colorScheme.primary)),
+                  Text('面值 ¥${_fmtFace(c.face)}  汇率 ${batch.rate}  成本 ¥${_fmtFace(c.face * batch.rate)}', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
                 ],
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.send, size: 18),
+                tooltip: '提卡',
+                onPressed: () => _pickCards([c]),
               ),
             ),
           )),
@@ -259,13 +245,13 @@ class _CheckPageState extends State<CheckPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('⚠️ 坏卡 (${badCards.length}张)', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    Text('坏卡 (${badCards.length}张)', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     ...badCards.map((c) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Row(children: [
                         Expanded(child: Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
-                        Text('¥${c.face.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                        Text('¥${_fmtFace(c.face)}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
                       ]),
                     )),
                   ],

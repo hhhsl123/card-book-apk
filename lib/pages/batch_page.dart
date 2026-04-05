@@ -36,6 +36,25 @@ class _BatchPageState extends State<BatchPage> {
     if (rate <= 0) { _msg('请输入进货汇率'); return; }
     if (raw.isEmpty) { _msg('请添加卡片'); return; }
 
+    final prov = context.read<AppProvider>();
+
+    // Check for duplicate batch name
+    final existingNames = prov.data.batches.map((b) => b.name).toSet();
+    if (existingNames.contains(name)) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('批次名称重复'),
+          content: Text('已存在名为"$name"的批次，确定继续创建吗？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('继续创建')),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
+
     final cards = <CardItem>[];
     for (final line in raw.split('\n')) {
       final l = line.trim();
@@ -64,8 +83,6 @@ class _BatchPageState extends State<BatchPage> {
     }
 
     if (cards.isEmpty) { _msg('未解析到有效卡片'); return; }
-
-    final prov = context.read<AppProvider>();
 
     // Check for internal duplicates
     final seenLabels = <String>{};
@@ -186,8 +203,6 @@ class _BatchPageState extends State<BatchPage> {
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   )),
                 ]),
-                const SizedBox(height: 12),
-                TextField(controller: _dateCtrl, decoration: const InputDecoration(labelText: '进货日期', border: OutlineInputBorder(), isDense: true)),
                 const SizedBox(height: 12),
                 TextField(controller: _faceCtrl, decoration: const InputDecoration(labelText: '统一面值（选填）', border: OutlineInputBorder(), isDense: true, hintText: '留空则从每行解析'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
                 const SizedBox(height: 12),
