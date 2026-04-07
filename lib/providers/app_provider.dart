@@ -67,24 +67,28 @@ class AppProvider extends ChangeNotifier {
 
   void _startAutoSync() {
     _autoSyncTimer?.cancel();
-    _autoSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!syncing) _silentPull();
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!syncing) _silentSync();
     });
   }
 
-  Future<void> _silentPull() async {
+  Future<void> _silentSync() async {
     try {
-      final remote = await SyncService.pull();
-      if (remote != null) {
-        data = remote;
+      syncing = true;
+      final merged = await SyncService.merge(data);
+      if (merged != null) {
+        data = merged;
         if (_repairDuplicateIds()) {
           await SyncService.overwrite(data);
         }
         await StorageService.saveData(data);
         syncStatus = '已同步';
-        notifyListeners();
       }
-    } catch (_) {}
+      syncing = false;
+      notifyListeners();
+    } catch (_) {
+      syncing = false;
+    }
   }
 
   @override
