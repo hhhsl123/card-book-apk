@@ -53,7 +53,13 @@ class _CheckPageState extends State<CheckPage> {
 
   Future<void> _pickCards(String batchId, List<CardItem> cards) async {
     final prov = context.read<AppProvider>();
-    final text = cards.map((c) => c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label).join('\n');
+    final fmt = (double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
+    final text = cards.map((c) {
+      final parts = [c.label];
+      if (c.secret.isNotEmpty) parts.add(c.secret);
+      parts.add(fmt(c.face));
+      return parts.join(' ');
+    }).join('\n');
 
     final ok = await showDialog<bool>(
       context: context,
