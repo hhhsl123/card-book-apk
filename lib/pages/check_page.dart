@@ -11,11 +11,14 @@ class CheckPage extends StatefulWidget {
 }
 
 class _CheckPageState extends State<CheckPage> {
-  String? _batchId;
+  String? _expandedBatchId;
   final _targetCtrl = TextEditingController();
   List<CardItem>? _comboResult;
+  String? _comboBatchId;
 
   void _msg(String s) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s), duration: const Duration(seconds: 2)));
+
+  String _fmtFace(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
 
   List<CardItem>? _findCombo(List<CardItem> cards, double target) {
     final sorted = List<CardItem>.from(cards)..sort((a, b) => b.face.compareTo(a.face));
@@ -23,15 +26,10 @@ class _CheckPageState extends State<CheckPage> {
 
     void bt(int start, double remaining, List<CardItem> chosen) {
       if ((remaining).abs() < 0.001) {
-        if (best == null || chosen.length < best!.length) {
-          best = List.from(chosen);
-        }
+        if (best == null || chosen.length < best!.length) best = List.from(chosen);
         return;
       }
-      if (remaining < -0.001) return;
-      if (best != null && chosen.length >= best!.length) return;
-      if (start >= sorted.length) return;
-
+      if (remaining < -0.001 || (best != null && chosen.length >= best!.length) || start >= sorted.length) return;
       for (int i = start; i < sorted.length; i++) {
         if (sorted[i].face > remaining + 0.001) continue;
         chosen.add(sorted[i]);
@@ -44,21 +42,16 @@ class _CheckPageState extends State<CheckPage> {
     return best;
   }
 
-  void _doCombo() {
+  void _doCombo(Batch batch) {
     final target = double.tryParse(_targetCtrl.text) ?? 0;
     if (target <= 0) { _msg('请输入目标金额'); return; }
-
-    final prov = context.read<AppProvider>();
-    final batch = prov.data.batches.where((b) => b.id == _batchId).firstOrNull;
-    if (batch == null) return;
-
     final unsold = batch.cards.where((c) => !c.sold && !c.bad).toList();
     final result = _findCombo(unsold, target);
-    setState(() => _comboResult = result);
+    setState(() { _comboResult = result; _comboBatchId = batch.id; });
     if (result == null) _msg('无法凑出该金额');
   }
 
-  Future<void> _pickCards(List<CardItem> cards) async {
+  Future<void> _pickCards(String batchId, List<CardItem> cards) async {
     final prov = context.read<AppProvider>();
     final text = cards.map((c) => c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label).join('\n');
 
@@ -91,176 +84,173 @@ class _CheckPageState extends State<CheckPage> {
 
     if (ok == true) {
       await Clipboard.setData(ClipboardData(text: text));
-      await prov.pickCards(_batchId!, cards);
+      await prov.pickCards(batchId, cards);
       setState(() => _comboResult = null);
       _msg('已复制并标记 ${cards.length} 张卡为已卖');
     }
   }
 
-  String _fmtFace(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
-
   @override
   Widget build(BuildContext context) {
     final prov = context.watch<AppProvider>();
     final batches = prov.data.batches;
-    final batch = _batchId != null ? batches.where((b) => b.id == _batchId).firstOrNull : null;
-    final unsold = batch?.cards.where((c) => !c.sold && !c.bad).toList() ?? [];
-    final badCards = batch?.cards.where((c) => c.bad).toList() ?? [];
 
-    final sortedBatches = List.of(batches)..sort((a, b) {
-      final aHasUnsold = a.cards.any((c) => !c.sold && !c.bad);
-      final bHasUnsold = b.cards.any((c) => !c.sold && !c.bad);
-      if (aHasUnsold && !bHasUnsold) return -1;
-      if (!aHasUnsold && bHasUnsold) return 1;
-      return b.date.compareTo(a.date);
-    });
+    final activeBatches = batches.where((b) => b.cards.any((c) => !c.sold && !c.bad)).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final doneBatches = batches.where((b) => b.cards.isNotEmpty && !b.cards.any((c) => !c.sold && !c.bad)).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        DropdownButtonFormField<String>(
-          value: _batchId,
-          decoration: const InputDecoration(labelText: '选择批次', border: OutlineInputBorder(), isDense: true),
-          items: sortedBatches.map((b) {
-            final remain = b.cards.where((c) => !c.sold && !c.bad).length;
-            final allDone = remain == 0 && b.cards.isNotEmpty;
-            return DropdownMenuItem(
-              value: b.id,
-              child: Text(
-                '${b.name} (${allDone ? "已卖完" : "剩${remain}张"})',
-                style: TextStyle(color: allDone ? Colors.grey : null),
-              ),
-            );
-          }).toList(),
-          onChanged: (v) => setState(() { _batchId = v; _comboResult = null; }),
-        ),
+        if (activeBatches.isEmpty && doneBatches.isEmpty)
+          Center(child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text('暂无批次', style: TextStyle(color: Colors.grey[500])),
+          ))
+        else ...[
+          ...activeBatches.map((b) => _buildBatchSection(b)),
+          if (doneBatches.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('已卖完', style: TextStyle(fontSize: 13, color: Colors.grey[400], fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ...doneBatches.map((b) => _buildBatchSection(b)),
+          ],
+        ],
+      ],
+    );
+  }
 
-        if (batch != null) ...[
-          const SizedBox(height: 12),
+  Widget _buildBatchSection(Batch batch) {
+    final unsold = batch.cards.where((c) => !c.sold && !c.bad).toList();
+    final badCards = batch.cards.where((c) => c.bad).toList();
+    final isExpanded = _expandedBatchId == batch.id;
+    final allDone = unsold.isEmpty;
 
-          Card(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() {
+              _expandedBatchId = isExpanded ? null : batch.id;
+              if (!isExpanded) { _comboResult = null; _targetCtrl.clear(); }
+            }),
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Text('📅 ${batch.batchDate}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-                    const SizedBox(width: 12),
-                    Text('💱 ${batch.rate}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-                    const SizedBox(width: 12),
-                    Text('📦 ${batch.cards.length}张', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-                  ]),
-                  const SizedBox(height: 6),
-                  Text(
-                    '剩余 ${unsold.length} 张 · 总面值 ¥${_fmtFace(unsold.fold<double>(0, (s, c) => s + c.face))} · 成本 ¥${_fmtFace(unsold.fold<double>(0, (s, c) => s + c.face) * batch.rate)}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                  ),
-                ],
-              ),
+              child: Row(children: [
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(batch.name, style: TextStyle(fontWeight: FontWeight.bold, color: allDone ? Colors.grey : null)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${batch.batchDate} · 汇率${batch.rate} · 剩${unsold.length}张${badCards.isNotEmpty ? " · 坏${badCards.length}" : ""}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                  ],
+                )),
+                if (!allDone) Text('¥${_fmtFace(unsold.fold<double>(0, (s, c) => s + c.face))}', style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.bold)),
+                const SizedBox(width: 4),
+                Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 20, color: Colors.grey),
+              ]),
             ),
           ),
-          const SizedBox(height: 8),
 
-          // Combo section
-          Card(
-            color: Colors.orange.shade50,
-            child: Padding(
+          if (isExpanded) ...[
+            const Divider(height: 1),
+            Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('组合凑面值', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(child: TextField(
-                      controller: _targetCtrl,
-                      decoration: const InputDecoration(hintText: '目标金额，如 20', border: OutlineInputBorder(), isDense: true),
-                      keyboardType: TextInputType.number,
-                    )),
-                    const SizedBox(width: 8),
-                    FilledButton(onPressed: _doCombo, child: const Text('组合')),
-                  ]),
-                  if (_comboResult != null) ...[
-                    const SizedBox(height: 12),
+                  if (unsold.isNotEmpty) ...[
+                    // Combo
                     Row(children: [
-                      Text('${_comboResult!.length}张 = ¥${_fmtFace(_comboResult!.fold<double>(0, (s, c) => s + c.face))}',
-                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.send, size: 16),
-                        label: const Text('提卡'),
-                        onPressed: () => _pickCards(_comboResult!),
-                      ),
+                      Expanded(child: TextField(
+                        controller: _targetCtrl,
+                        decoration: const InputDecoration(hintText: '目标金额', border: OutlineInputBorder(), isDense: true),
+                        keyboardType: TextInputType.number,
+                      )),
+                      const SizedBox(width: 8),
+                      FilledButton(onPressed: () => _doCombo(batch), child: const Text('组合')),
                     ]),
-                    const SizedBox(height: 8),
-                    ...(_comboResult!).map((c) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+
+                    if (_comboResult != null && _comboBatchId == batch.id) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Text('${_comboResult!.length}张 = ¥${_fmtFace(_comboResult!.fold<double>(0, (s, c) => s + c.face))}',
+                                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                              const Spacer(),
+                              FilledButton.icon(icon: const Icon(Icons.send, size: 16), label: const Text('提卡'),
+                                onPressed: () => _pickCards(batch.id, _comboResult!)),
+                            ]),
+                            const SizedBox(height: 6),
+                            ...(_comboResult!).map((c) => Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text('${c.label}${c.secret.isNotEmpty ? " ${c.secret}" : ""} (¥${_fmtFace(c.face)})',
+                                style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
+                            )),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+
+                    // Unsold cards
+                    ...unsold.map((c) => Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
                       child: Row(children: [
                         Expanded(child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
-                            if (c.secret.isNotEmpty) Text(c.secret, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Theme.of(context).colorScheme.primary)),
+                            Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                            if (c.secret.isNotEmpty) Text(c.secret, style: TextStyle(fontFamily: 'monospace', fontSize: 10, color: Theme.of(context).colorScheme.primary)),
                           ],
                         )),
-                        Text('面值¥${_fmtFace(c.face)}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                        Text('¥${_fmtFace(c.face)}', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                        const SizedBox(width: 2),
+                        Text('成本¥${_fmtFace(c.face * batch.rate)}', style: TextStyle(fontSize: 10, color: Colors.grey[400])),
+                        IconButton(
+                          icon: const Icon(Icons.send, size: 16),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          padding: EdgeInsets.zero,
+                          tooltip: '提卡',
+                          onPressed: () => _pickCards(batch.id, [c]),
+                        ),
                       ]),
                     )),
                   ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
 
-          // Card list — show face value & rate, keep pick, remove copy
-          ...unsold.map((c) => Card(
-            margin: const EdgeInsets.only(bottom: 4),
-            child: ListTile(
-              dense: true,
-              title: Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (c.secret.isNotEmpty) Text(c.secret, style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: Theme.of(context).colorScheme.primary)),
-                  Text('面值 ¥${_fmtFace(c.face)}  汇率 ${batch.rate}  成本 ¥${_fmtFace(c.face * batch.rate)}', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                ],
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.send, size: 18),
-                tooltip: '提卡',
-                onPressed: () => _pickCards([c]),
-              ),
-            ),
-          )),
-
-          // Bad cards
-          if (badCards.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Card(
-              color: Colors.red.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('坏卡 (${badCards.length}张)', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  if (badCards.isNotEmpty) ...[
                     const SizedBox(height: 8),
+                    Text('坏卡 (${badCards.length}张)', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
                     ...badCards.map((c) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+                      padding: const EdgeInsets.only(bottom: 2),
                       child: Row(children: [
-                        Expanded(child: Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
-                        Text('¥${_fmtFace(c.face)}', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                        Expanded(child: Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 11))),
+                        Text('面值¥${_fmtFace(c.face)}${c.soldPrice > 0 ? " 余额¥${_fmtFace(c.soldPrice)}" : ""}',
+                          style: TextStyle(fontSize: 10, color: Colors.grey[500])),
                       ]),
                     )),
                   ],
-                ),
+
+                  if (unsold.isEmpty)
+                    Center(child: Text('全部卖完', style: TextStyle(color: Colors.grey[400]))),
+                ],
               ),
             ),
           ],
         ],
-      ],
+      ),
     );
   }
 }

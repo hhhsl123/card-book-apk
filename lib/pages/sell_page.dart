@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../widgets/card_tile.dart';
@@ -45,7 +46,7 @@ class _SellPageState extends State<SellPage> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4, childAspectRatio: 1, crossAxisSpacing: 6, mainAxisSpacing: 6,
+              crossAxisCount: 4, childAspectRatio: 0.85, crossAxisSpacing: 6, mainAxisSpacing: 6,
             ),
             itemCount: batch.cards.length,
             itemBuilder: (_, i) {
@@ -61,6 +62,11 @@ class _SellPageState extends State<SellPage> {
                       _selected.add(c.id);
                     }
                   });
+                },
+                onLongPress: () {
+                  final text = c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label;
+                  Clipboard.setData(ClipboardData(text: text));
+                  _msg('已复制: ${c.label}');
                 },
               );
             },
@@ -101,17 +107,34 @@ class _SellPageState extends State<SellPage> {
                           label: const Text('标记坏卡'),
                           style: FilledButton.styleFrom(backgroundColor: Colors.red),
                           onPressed: () async {
-                            final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-                              title: const Text('标记坏卡？'),
-                              content: Text('确定将 ${_selected.length} 张卡标记为坏卡？'),
+                            final balanceCtrl = TextEditingController(text: '0');
+                            final result = await showDialog<double?>(context: context, builder: (ctx) => AlertDialog(
+                              title: const Text('标记坏卡'),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('确定将 ${_selected.length} 张卡标记为坏卡？'),
+                                  const SizedBox(height: 12),
+                                  TextField(
+                                    controller: balanceCtrl,
+                                    decoration: const InputDecoration(
+                                      labelText: '实际余额（每张）',
+                                      hintText: '0 = 完全无效，如面值20实际5则填5',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  ),
+                                ],
+                              ),
                               actions: [
-                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-                                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定', style: TextStyle(color: Colors.red))),
+                                TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('取消')),
+                                TextButton(onPressed: () => Navigator.pop(ctx, double.tryParse(balanceCtrl.text) ?? 0), child: const Text('确定', style: TextStyle(color: Colors.red))),
                               ],
                             ));
-                            if (ok == true) {
-                              await prov.markBad(_batchId!, _selected);
-                              _msg('已标记 ${_selected.length} 张坏卡');
+                            if (result != null) {
+                              await prov.markBad(_batchId!, _selected, actualBalance: result);
+                              _msg('已标记 ${_selected.length} 张坏卡${result > 0 ? "（余额$result）" : ""}');
                               setState(() => _selected.clear());
                             }
                           },

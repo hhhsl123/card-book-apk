@@ -195,12 +195,13 @@ class AppProvider extends ChangeNotifier {
     await _save();
   }
 
-  Future<void> markBad(String batchId, Set<String> cardIds) async {
+  Future<void> markBad(String batchId, Set<String> cardIds, {double actualBalance = 0}) async {
     final batch = data.batches.firstWhere((b) => b.id == batchId);
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final c in batch.cards) {
       if (cardIds.contains(c.id)) {
         c.bad = true;
+        c.soldPrice = actualBalance;
         c.updatedAt = now;
       }
     }
