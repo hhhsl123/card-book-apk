@@ -12,6 +12,8 @@ class AppProvider extends ChangeNotifier {
   String syncStatus = '';
   String? syncMessage;
   Timer? _autoSyncTimer;
+  bool _syncLock = false;
+  bool _pendingSave = false;
 
   static int _idCounter = 0;
   static final _rng = Random();
@@ -43,13 +45,12 @@ class AppProvider extends ChangeNotifier {
     await StorageService.saveData(data);
     notifyListeners();
 
-    // Pull cloud data, repair if needed, then overwrite cloud with clean data
     syncing = true;
     syncStatus = '同步中...';
     notifyListeners();
-    final remote = await SyncService.pull();
-    if (remote != null) {
-      data = remote;
+    final merged = await SyncService.merge(data);
+    if (merged != null) {
+      data = merged;
       if (_repairDuplicateIds()) {
         await SyncService.overwrite(data);
       }
@@ -73,6 +74,8 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> _silentSync() async {
+    if (_syncLock) return;
+    _syncLock = true;
     try {
       syncing = true;
       final merged = await SyncService.merge(data);
@@ -88,6 +91,8 @@ class AppProvider extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       syncing = false;
+    } finally {
+      _syncLock = false;
     }
   }
 
@@ -106,24 +111,8 @@ class AppProvider extends ChangeNotifier {
 
   // ---- Sync ----
   Future<void> pullFromCloud() async {
-    syncing = true;
-    syncStatus = '同步中...';
-    notifyListeners();
-    final remote = await SyncService.pull();
-    if (remote != null) {
-      data = remote;
-      if (_repairDuplicateIds()) {
-        await SyncService.overwrite(data);
-      }
-      await StorageService.saveData(data);
-      syncStatus = '已同步';
-      syncMessage = '同步成功';
-    } else {
-      syncStatus = '同步失败';
-      syncMessage = '同步失败';
-    }
-    syncing = false;
-    notifyListeners();
+    if (_syncLock) return;
+    await _doSync();
   }
 
   Future<void> _save() async {
@@ -131,24 +120,45 @@ class AppProvider extends ChangeNotifier {
     await StorageService.saveData(data);
     notifyListeners();
 
+    if (_syncLock) {
+      _pendingSave = true;
+      return;
+    }
+    await _doSync();
+  }
+
+  Future<void> _doSync() async {
+    _syncLock = true;
     syncing = true;
     syncStatus = '同步中...';
     notifyListeners();
-    final merged = await SyncService.merge(data);
-    if (merged != null) {
-      data = merged;
-      if (_repairDuplicateIds()) {
-        await SyncService.overwrite(data);
+    try {
+      final merged = await SyncService.merge(data);
+      if (merged != null) {
+        data = merged;
+        if (_repairDuplicateIds()) {
+          await SyncService.overwrite(data);
+        }
+        await StorageService.saveData(data);
+        syncStatus = '已同步';
+        syncMessage = '同步成功';
+      } else {
+        syncStatus = '同步失败';
+        syncMessage = '同步失败';
       }
-      await StorageService.saveData(data);
-      syncStatus = '已同步';
-      syncMessage = '同步成功';
-    } else {
+    } catch (_) {
       syncStatus = '同步失败';
       syncMessage = '同步失败';
+    } finally {
+      syncing = false;
+      _syncLock = false;
+      notifyListeners();
     }
-    syncing = false;
-    notifyListeners();
+
+    if (_pendingSave) {
+      _pendingSave = false;
+      await _doSync();
+    }
   }
 
   /// Clear the one-time sync message after it's been shown
