@@ -1,28 +1,51 @@
-import 'dart:js_interop';
-import 'package:web/web.dart' as web;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-Future<bool> copyText(String text) async {
-  // Method 1: legacy execCommand with temporary textarea (most reliable on mobile)
+Future<void> showCopyDialog(BuildContext context, String label, String text) async {
+  // Try programmatic copy first
   try {
-    final ta = web.document.createElement('textarea') as web.HTMLTextAreaElement;
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    ta.style.top = '-9999px';
-    ta.style.opacity = '0';
-    web.document.body!.appendChild(ta);
-    ta.focus();
-    ta.select();
-    final ok = web.document.execCommand('copy');
-    ta.remove();
-    if (ok) return true;
+    await Clipboard.setData(ClipboardData(text: text));
   } catch (_) {}
 
-  // Method 2: modern clipboard API
-  try {
-    await web.window.navigator.clipboard.writeText(text).toDart;
-    return true;
-  } catch (_) {}
+  if (!context.mounted) return;
 
-  return false;
+  await showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.copy, size: 20),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontSize: 16)),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('长按下方文字选择复制', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: SelectableText(
+              text,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('关闭'),
+        ),
+      ],
+    ),
+  );
 }

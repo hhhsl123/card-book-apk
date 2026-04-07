@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/data.dart';
 import '../widgets/card_tile.dart';
-import '../services/clipboard_helper.dart';
+import '../services/clipboard_helper.dart' show showCopyDialog;
 
 class SellPage extends StatefulWidget {
   const SellPage({super.key});
@@ -115,10 +115,9 @@ class _SellPageState extends State<SellPage> {
                             }
                           });
                         },
-                        onLongPress: () async {
+                        onLongPress: () {
                           final text = c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label;
-                          final ok = await copyText(text);
-                          _msg(ok ? '已复制: ${c.label}' : '复制失败，请手动复制');
+                          showCopyDialog(context, '复制卡号', text);
                         },
                       );
                     },

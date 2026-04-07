@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/data.dart';
-import '../services/clipboard_helper.dart';
+import '../services/clipboard_helper.dart' show showCopyDialog;
 
 class CheckPage extends StatefulWidget {
   const CheckPage({super.key});
@@ -89,10 +89,11 @@ class _CheckPageState extends State<CheckPage> {
     );
 
     if (ok == true) {
-      await copyText(text);
       await prov.pickCards(batchId, cards);
       setState(() => _comboResult = null);
-      _msg('已复制并标记 ${cards.length} 张卡为已卖');
+      if (mounted) {
+        await showCopyDialog(context, '提卡成功 - 复制卡号', text);
+      }
     }
   }
 
