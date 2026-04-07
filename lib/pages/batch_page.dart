@@ -204,10 +204,14 @@ class _BatchPageState extends State<BatchPage> {
                 Row(children: [
                   Expanded(child: TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: '批次名称', border: OutlineInputBorder(), isDense: true))),
                   const SizedBox(width: 12),
-                  Expanded(child: TextField(
-                    controller: _rateCtrl,
+                  Expanded(child: DropdownButtonFormField<double>(
+                    value: double.tryParse(_rateCtrl.text),
                     decoration: const InputDecoration(labelText: '进货汇率', border: OutlineInputBorder(), isDense: true),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    items: [
+                      for (double v = 3.0; v <= 5.001; v += 0.05)
+                        DropdownMenuItem(value: double.parse(v.toStringAsFixed(2)), child: Text(v.toStringAsFixed(2))),
+                    ],
+                    onChanged: (v) => setState(() { _rateCtrl.text = v?.toStringAsFixed(2) ?? ''; }),
                   )),
                 ]),
                 const SizedBox(height: 12),
