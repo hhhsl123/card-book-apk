@@ -92,7 +92,7 @@ class _CheckPageState extends State<CheckPage> {
       await prov.pickCards(batchId, cards);
       setState(() => _comboResult = null);
       if (mounted) {
-        await showCopyDialog(context, '提卡成功 - 复制卡号', text);
+        showCopyDialog(context, '提卡成功 - 复制卡号', text);
       }
     }
   }
