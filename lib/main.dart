@@ -141,7 +141,10 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      body: _pages[_index],
+      body: RefreshIndicator(
+        onRefresh: () => context.read<AppProvider>().pullFromCloud(),
+        child: _pages[_index],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
