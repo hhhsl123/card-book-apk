@@ -10,6 +10,7 @@ class AppProvider extends ChangeNotifier {
   String? myRole;
   bool syncing = false;
   String syncStatus = '';
+  String? syncMessage;
   Timer? _autoSyncTimer;
 
   static int _idCounter = 0;
@@ -26,8 +27,7 @@ class AppProvider extends ChangeNotifier {
       final seen = <String>{};
       for (final card in batch.cards) {
         if (!seen.add(card.id)) {
-          final newId = _uniqueId();
-          card.id = newId;
+          card.id = _uniqueId();
           card.updatedAt = DateTime.now().millisecondsSinceEpoch;
           changed = true;
         }
@@ -39,34 +39,46 @@ class AppProvider extends ChangeNotifier {
   Future<void> init() async {
     data = await StorageService.loadData();
     myRole = await StorageService.getRole();
-    if (_repairDuplicateIds()) {
-      await StorageService.saveData(data);
-    }
+    _repairDuplicateIds();
+    await StorageService.saveData(data);
     notifyListeners();
-    await pullFromCloud();
-    if (_repairDuplicateIds()) {
-      await _save();
+
+    // Pull cloud data, repair if needed, then overwrite cloud with clean data
+    syncing = true;
+    syncStatus = '同步中...';
+    notifyListeners();
+    final remote = await SyncService.pull();
+    if (remote != null) {
+      data = remote;
+      if (_repairDuplicateIds()) {
+        await SyncService.overwrite(data);
+      }
+      await StorageService.saveData(data);
+      syncStatus = '已同步';
+      syncMessage = '同步成功';
+    } else {
+      syncStatus = '同步失败';
     }
+    syncing = false;
+    notifyListeners();
+
     _startAutoSync();
   }
 
   void _startAutoSync() {
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!syncing) {
-        _silentPull();
-      }
+      if (!syncing) _silentPull();
     });
   }
 
-  /// Pull without showing loading spinner (background refresh)
   Future<void> _silentPull() async {
     try {
       final remote = await SyncService.pull();
       if (remote != null) {
         data = remote;
         if (_repairDuplicateIds()) {
-          await SyncService.merge(data);
+          await SyncService.overwrite(data);
         }
         await StorageService.saveData(data);
         syncStatus = '已同步';
@@ -96,31 +108,48 @@ class AppProvider extends ChangeNotifier {
     final remote = await SyncService.pull();
     if (remote != null) {
       data = remote;
+      if (_repairDuplicateIds()) {
+        await SyncService.overwrite(data);
+      }
       await StorageService.saveData(data);
       syncStatus = '已同步';
+      syncMessage = '同步成功';
     } else {
       syncStatus = '同步失败';
+      syncMessage = '同步失败';
     }
     syncing = false;
     notifyListeners();
   }
 
   Future<void> _save() async {
+    _repairDuplicateIds();
     await StorageService.saveData(data);
     notifyListeners();
+
     syncing = true;
     syncStatus = '同步中...';
     notifyListeners();
     final merged = await SyncService.merge(data);
     if (merged != null) {
       data = merged;
+      if (_repairDuplicateIds()) {
+        await SyncService.overwrite(data);
+      }
       await StorageService.saveData(data);
       syncStatus = '已同步';
+      syncMessage = '同步成功';
     } else {
       syncStatus = '同步失败';
+      syncMessage = '同步失败';
     }
     syncing = false;
     notifyListeners();
+  }
+
+  /// Clear the one-time sync message after it's been shown
+  void clearSyncMessage() {
+    syncMessage = null;
   }
 
   // ---- Persons ----

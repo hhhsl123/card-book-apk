@@ -55,7 +55,26 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkRole());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkRole();
+      _listenSync();
+    });
+  }
+
+  void _listenSync() {
+    final prov = context.read<AppProvider>();
+    prov.addListener(() {
+      final msg = prov.syncMessage;
+      if (msg != null && mounted) {
+        prov.clearSyncMessage();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(msg),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: msg.contains('成功') ? Colors.green : Colors.red,
+        ));
+      }
+    });
   }
 
   void _checkRole() {

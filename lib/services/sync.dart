@@ -30,4 +30,17 @@ class SyncService {
     } catch (_) {}
     return null;
   }
+
+  /// Overwrite cloud data entirely (PUT)
+  static Future<bool> overwrite(AppData data) async {
+    try {
+      final resp = await http.put(
+        Uri.parse(_url),
+        headers: {'Content-Type': 'application/json'},
+        body: data.toJsonString(),
+      ).timeout(const Duration(seconds: 10));
+      return resp.statusCode == 200;
+    } catch (_) {}
+    return false;
+  }
 }
