@@ -1,33 +1,15 @@
-import 'dart:js_interop';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-@JS('eval')
-external JSAny? _jsEval(JSString code);
-
-void _jsCopy(String text) {
-  final escaped = text
-      .replaceAll('\\', '\\\\')
-      .replaceAll("'", "\\'")
-      .replaceAll('\n', '\\n')
-      .replaceAll('\r', '');
-  _jsEval("""
-(function(){
-  var t=document.createElement('textarea');
-  t.value='$escaped';
-  t.setAttribute('readonly','');
-  t.style.cssText='position:fixed;left:0;top:0;width:1px;height:1px;padding:0;border:none;outline:none;box-shadow:none;opacity:0.01';
-  document.body.appendChild(t);
-  t.focus();
-  t.select();
-  try{t.setSelectionRange(0,99999)}catch(e){}
-  document.execCommand('copy');
-  t.remove();
-})()
-""".toJS);
-}
+import 'clipboard_web.dart' if (dart.library.io) 'clipboard_native.dart' as platform;
 
 void showCopyDialog(BuildContext context, String label, String text) {
-  _jsCopy(text);
+  if (kIsWeb) {
+    platform.doCopy(text);
+  } else {
+    Clipboard.setData(ClipboardData(text: text));
+  }
 
   showDialog(
     context: context,
@@ -48,7 +30,11 @@ void showCopyDialog(BuildContext context, String label, String text) {
               const SizedBox(height: 12),
               GestureDetector(
                 onTap: () {
-                  _jsCopy(text);
+                  if (kIsWeb) {
+                    platform.doCopy(text);
+                  } else {
+                    Clipboard.setData(ClipboardData(text: text));
+                  }
                   setDialogState(() => copied = true);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)),
@@ -62,19 +48,13 @@ void showCopyDialog(BuildContext context, String label, String text) {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: copied ? Colors.green.shade200 : Colors.grey.shade300),
                   ),
-                  child: Text(
-                    text,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-                  ),
+                  child: Text(text, style: const TextStyle(fontFamily: 'monospace', fontSize: 14)),
                 ),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('关闭'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
           ],
         ),
       );
