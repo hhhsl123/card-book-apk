@@ -5,9 +5,9 @@ class CardTile extends StatelessWidget {
   final CardItem card;
   final bool selected;
   final VoidCallback onTap;
-  final VoidCallback? onLongPress;
+  final VoidCallback? onCopy;
 
-  const CardTile({super.key, required this.card, required this.selected, required this.onTap, this.onLongPress});
+  const CardTile({super.key, required this.card, required this.selected, required this.onTap, this.onCopy});
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +39,6 @@ class CardTile extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onLongPress,
       child: Opacity(
         opacity: opacity,
         child: Container(
@@ -48,7 +47,7 @@ class CardTile extends StatelessWidget {
             border: Border.all(color: borderColor, width: selected ? 2 : 1),
             borderRadius: BorderRadius.circular(10),
           ),
-          padding: const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(3),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -64,7 +63,6 @@ class CardTile extends StatelessWidget {
                   decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(99)),
                   child: Text(card.soldPrice > 0 ? '余${card.soldPrice.toInt()}' : '坏卡', style: const TextStyle(fontSize: 8, color: Colors.white)),
                 ),
-              const SizedBox(height: 1),
               Text(
                 card.label,
                 style: const TextStyle(fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.w500),
@@ -74,6 +72,14 @@ class CardTile extends StatelessWidget {
               ),
               Text(faceStr, style: TextStyle(fontSize: 9, color: Colors.grey[500])),
               if (isSold) Text('已卖', style: TextStyle(fontSize: 9, color: Colors.grey[400])),
+              if (onCopy != null)
+                GestureDetector(
+                  onTap: onCopy,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Icon(Icons.copy, size: 12, color: Colors.grey[400]),
+                  ),
+                ),
             ],
           ),
         ),

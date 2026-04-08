@@ -148,11 +148,23 @@ class _SettlePageState extends State<SettlePage> {
                                   ...pSoldCards.map((c) => Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 1),
                                     child: Row(children: [
-                                      Expanded(child: SelectableText(
+                                      Expanded(child: Text(
                                         c.label,
                                         style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                        overflow: TextOverflow.ellipsis,
                                       )),
                                       Text('¥${_fmtFace(c.face)}', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                                      const SizedBox(width: 4),
+                                      GestureDetector(
+                                        onTap: () {
+                                          final text = c.secret.isNotEmpty
+                                              ? '${c.label} ${c.secret} ${_fmtFace(c.face)}'
+                                              : '${c.label} ${_fmtFace(c.face)}';
+                                          copyToClipboard(text);
+                                          _msg('已复制: ${c.label}');
+                                        },
+                                        child: Icon(Icons.copy, size: 14, color: Colors.grey[400]),
+                                      ),
                                     ]),
                                   )),
                                   const SizedBox(height: 6),

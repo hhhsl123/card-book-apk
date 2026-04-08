@@ -115,7 +115,7 @@ class _SellPageState extends State<SellPage> {
                             }
                           });
                         },
-                        onLongPress: () async {
+                        onCopy: () async {
                           final text = c.secret.isNotEmpty ? '${c.label} ${c.secret}' : c.label;
                           await copyToClipboard(text);
                           if (mounted) _msg('已复制: ${c.label}');
