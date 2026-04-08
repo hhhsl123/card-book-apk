@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/data.dart';
+import '../services/clipboard_helper.dart';
 
 class SettlePage extends StatefulWidget {
   const SettlePage({super.key});
@@ -11,8 +12,6 @@ class SettlePage extends StatefulWidget {
 
 class _SettlePageState extends State<SettlePage> {
   String? _expandedBatchId;
-  String? _payer;
-  final _paidCtrl = TextEditingController();
 
   String _fmtFace(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
 
@@ -46,6 +45,7 @@ class _SettlePageState extends State<SettlePage> {
     final totalCost = totalFace * batch.rate;
     final soldFace = soldCards.fold<double>(0, (s, c) => s + c.face);
     final badRecovered = badCards.fold<double>(0, (s, c) => s + c.soldPrice);
+    final badLoss = badCards.fold<double>(0, (s, c) => s + c.face) - badRecovered;
     final totalRevenue = soldFace + badRecovered;
     final persons = prov.data.persons;
 
@@ -56,13 +56,7 @@ class _SettlePageState extends State<SettlePage> {
         children: [
           InkWell(
             onTap: () => setState(() {
-              if (isExpanded) {
-                _expandedBatchId = null;
-              } else {
-                _expandedBatchId = batch.id;
-                _payer = null;
-                _paidCtrl.clear();
-              }
+              _expandedBatchId = isExpanded ? null : batch.id;
             }),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -102,123 +96,104 @@ class _SettlePageState extends State<SettlePage> {
                   _row('总成本 (面值×汇率)', '¥${_fmtFace(totalCost)}'),
                   _row('已售面值', '¥${_fmtFace(soldFace)}'),
                   if (badRecovered > 0) _row('坏卡回收余额', '¥${_fmtFace(badRecovered)}'),
+                  if (badLoss > 0) _row('坏卡损失', '-¥${_fmtFace(badLoss)}', color: Colors.red),
                   _row('总收入', '¥${_fmtFace(totalRevenue)}', bold: true),
                   _row('利润', '¥${_fmtFace(totalRevenue - totalCost)}',
                     color: (totalRevenue - totalCost) >= 0 ? Colors.green : Colors.red, bold: true),
 
                   const Divider(height: 24),
 
-                  // Per person
+                  // Per person summary
+                  const Text('各人汇总', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 8),
+
                   ...persons.map((p) {
-                    final pCards = batch.cards.where((c) => c.sold && !c.bad && c.soldBy == p).toList();
-                    final pFace = pCards.fold<double>(0, (s, c) => s + c.face);
-                    return ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      childrenPadding: const EdgeInsets.only(bottom: 8),
-                      title: Row(children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(8)),
-                          child: Text(p, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                        ),
-                        const Spacer(),
-                        Text('${pCards.length}张 · ¥${_fmtFace(pFace)}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                      ]),
-                      children: pCards.isEmpty
-                        ? [Text('暂无售出', style: TextStyle(fontSize: 12, color: Colors.grey[400]))]
-                        : pCards.map((c) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 1),
-                            child: Row(children: [
-                              Expanded(child: Text(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), overflow: TextOverflow.ellipsis)),
-                              Text('¥${_fmtFace(c.face)}', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                            ]),
-                          )).toList(),
+                    final pSoldCards = soldCards.where((c) => c.soldBy == p).toList();
+                    final pFace = pSoldCards.fold<double>(0, (s, c) => s + c.face);
+                    final pCount = pSoldCards.length;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(8)),
+                              child: Text(p, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                            ),
+                            const Spacer(),
+                            Text('$pCount张 · ¥${_fmtFace(pFace)}', style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.bold)),
+                          ]),
+                          if (pSoldCards.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            // Card list - selectable for copy
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ...pSoldCards.map((c) => Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 1),
+                                    child: Row(children: [
+                                      Expanded(child: SelectableText(
+                                        c.label,
+                                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                      )),
+                                      Text('¥${_fmtFace(c.face)}', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                                    ]),
+                                  )),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      icon: const Icon(Icons.copy, size: 14),
+                                      label: Text('复制${p}全部卡号', style: const TextStyle(fontSize: 12)),
+                                      onPressed: () {
+                                        final text = pSoldCards.map((c) {
+                                          final parts = [c.label];
+                                          if (c.secret.isNotEmpty) parts.add(c.secret);
+                                          parts.add(_fmtFace(c.face));
+                                          return parts.join(' ');
+                                        }).join('\n');
+                                        copyToClipboard(text);
+                                        _msg('已复制${p}的${pCount}张卡号');
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     );
                   }),
 
-                  const Divider(height: 24),
-
-                  // Settlement calculator
-                  const Text('结算', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 8),
-                  const Text('谁付的货款？', style: TextStyle(fontSize: 13)),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    children: persons.map((p) => ChoiceChip(
-                      label: Text(p),
-                      selected: _payer == p,
-                      onSelected: (sel) => setState(() => _payer = sel ? p : null),
-                    )).toList(),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _paidCtrl,
-                    decoration: InputDecoration(
-                      labelText: '实际付款金额',
-                      hintText: '建议值: ${_fmtFace(totalCost)}',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    onChanged: (_) => setState(() {}),
-                  ),
-
-                  if (_payer != null && (double.tryParse(_paidCtrl.text) ?? 0) > 0) ...[
-                    const SizedBox(height: 12),
-                    Builder(builder: (_) {
-                      final paid = double.tryParse(_paidCtrl.text) ?? 0;
-                      final profit = totalRevenue - paid;
-                      final profitShare = profit / persons.length;
-
-                      final personRevenue = <String, double>{};
-                      for (final p in persons) {
-                        personRevenue[p] = batch.cards
-                            .where((c) => c.sold && !c.bad && c.soldBy == p)
-                            .fold<double>(0, (s, c) => s + c.face);
-                      }
-
-                      final results = <Widget>[];
-                      for (final p in persons) {
-                        if (p == _payer) continue;
-                        final rev = personRevenue[p] ?? 0;
-                        final shouldTransfer = rev - profitShare;
-                        if (shouldTransfer > 0.01) {
-                          results.add(Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(8)),
-                            child: Text('$p 应转给 $_payer：¥${_fmtFace(shouldTransfer)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.deepOrange)),
-                          ));
-                        } else if (shouldTransfer < -0.01) {
-                          results.add(Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(8)),
-                            child: Text('$_payer 应转给 $p：¥${_fmtFace(-shouldTransfer)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.green)),
-                          ));
-                        } else {
-                          results.add(Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                            child: Text('$p 已结清', style: TextStyle(color: Colors.grey[600])),
-                          ));
-                        }
-                      }
-
-                      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _row('总利润', '¥${_fmtFace(profit)}', color: profit >= 0 ? Colors.green : Colors.red, bold: true),
-                        _row('每人分利', '¥${_fmtFace(profitShare)}'),
-                        const SizedBox(height: 8),
-                        ...results,
-                      ]);
-                    }),
+                  if (badCards.isNotEmpty) ...[
+                    const Divider(height: 24),
+                    Text('坏卡 (${badCards.length}张)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.red)),
+                    const SizedBox(height: 8),
+                    ...badCards.map((c) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(children: [
+                        Expanded(child: SelectableText(c.label, style: const TextStyle(fontFamily: 'monospace', fontSize: 11))),
+                        Text('面值¥${_fmtFace(c.face)}${c.soldPrice > 0 ? " 余额¥${_fmtFace(c.soldPrice)}" : ""}',
+                          style: TextStyle(fontSize: 10, color: Colors.grey[500])),
+                      ]),
+                    )),
                   ],
 
                   const Divider(height: 24),

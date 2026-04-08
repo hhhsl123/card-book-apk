@@ -10,8 +10,6 @@ class AppProvider extends ChangeNotifier {
   bool syncing = false;
   String syncStatus = '';
   String? syncMessage;
-  bool _syncLock = false;
-  bool _pendingSave = false;
 
   static int _idCounter = 0;
   static final _rng = Random();
@@ -40,93 +38,72 @@ class AppProvider extends ChangeNotifier {
     data = await StorageService.loadData();
     myRole = await StorageService.getRole();
     _repairDuplicateIds();
-    await StorageService.saveData(data);
     notifyListeners();
+    await _syncToCloud();
+  }
 
+  /// The single sync method: merge local with cloud, save result everywhere
+  Future<void> _syncToCloud() async {
     syncing = true;
     syncStatus = '同步中...';
     notifyListeners();
-    final merged = await SyncService.merge(data);
-    if (merged != null) {
-      data = merged;
-      if (_repairDuplicateIds()) {
-        await SyncService.overwrite(data);
+
+    try {
+      final merged = await SyncService.merge(data);
+      if (merged != null) {
+        data = merged;
+        _repairDuplicateIds();
+        await StorageService.saveData(data);
+        syncStatus = '已同步';
+        syncMessage = '同步成功';
+      } else {
+        // merge failed, try simple pull
+        final remote = await SyncService.pull();
+        if (remote != null) {
+          // Re-merge locally: apply our local changes on top of remote
+          data = remote;
+          _repairDuplicateIds();
+          await StorageService.saveData(data);
+          syncStatus = '已同步(拉取)';
+          syncMessage = '同步成功';
+        } else {
+          await StorageService.saveData(data);
+          syncStatus = '同步失败';
+          syncMessage = '同步失败';
+        }
       }
+    } catch (_) {
       await StorageService.saveData(data);
-      syncStatus = '已同步';
-      syncMessage = '同步成功';
-    } else {
       syncStatus = '同步失败';
+      syncMessage = '同步失败';
     }
+
     syncing = false;
     notifyListeners();
   }
 
-  // ---- Role ----
+  /// Called after every data mutation
+  Future<void> _save() async {
+    await StorageService.saveData(data);
+    notifyListeners();
+    await _syncToCloud();
+  }
+
+  /// Manual pull (pull-to-refresh)
+  Future<void> pullFromCloud() async {
+    await _syncToCloud();
+  }
+
+  void clearSyncMessage() {
+    syncMessage = null;
+  }
+
   Future<void> setRole(String role) async {
     myRole = role;
     await StorageService.setRole(role);
     notifyListeners();
   }
 
-  // ---- Sync ----
-  Future<void> pullFromCloud() async {
-    if (_syncLock) return;
-    await _doSync();
-  }
-
-  Future<void> _save() async {
-    _repairDuplicateIds();
-    await StorageService.saveData(data);
-    notifyListeners();
-
-    if (_syncLock) {
-      _pendingSave = true;
-      return;
-    }
-    await _doSync();
-  }
-
-  Future<void> _doSync() async {
-    _syncLock = true;
-    syncing = true;
-    syncStatus = '同步中...';
-    notifyListeners();
-    try {
-      final merged = await SyncService.merge(data);
-      if (merged != null) {
-        data = merged;
-        if (_repairDuplicateIds()) {
-          await SyncService.overwrite(data);
-        }
-        await StorageService.saveData(data);
-        syncStatus = '已同步';
-        syncMessage = '同步成功';
-      } else {
-        syncStatus = '同步失败';
-        syncMessage = '同步失败';
-      }
-    } catch (_) {
-      syncStatus = '同步失败';
-      syncMessage = '同步失败';
-    } finally {
-      syncing = false;
-      _syncLock = false;
-      notifyListeners();
-    }
-
-    if (_pendingSave) {
-      _pendingSave = false;
-      await _doSync();
-    }
-  }
-
-  /// Clear the one-time sync message after it's been shown
-  void clearSyncMessage() {
-    syncMessage = null;
-  }
-
-  // ---- Persons ----
   Future<void> addPerson(String name) async {
     if (!data.persons.contains(name)) {
       data.persons.add(name);
@@ -139,7 +116,6 @@ class AppProvider extends ChangeNotifier {
     await _save();
   }
 
-  // ---- Batches ----
   Future<void> addBatch(Batch batch) async {
     data.batches.add(batch);
     await _save();
@@ -153,7 +129,6 @@ class AppProvider extends ChangeNotifier {
     await _save();
   }
 
-  // ---- Cards ----
   Future<void> sellCards(String batchId, Set<String> cardIds, String seller) async {
     final batch = data.batches.firstWhere((b) => b.id == batchId);
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -182,6 +157,22 @@ class AppProvider extends ChangeNotifier {
     await _save();
   }
 
+  Future<void> undoCards(String batchId, Set<String> cardIds) async {
+    final batch = data.batches.firstWhere((b) => b.id == batchId);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final c in batch.cards) {
+      if (cardIds.contains(c.id)) {
+        c.sold = false;
+        c.bad = false;
+        c.soldBy = null;
+        c.soldPrice = 0;
+        c.soldDate = null;
+        c.updatedAt = now;
+      }
+    }
+    await _save();
+  }
+
   Future<void> deleteCard(String batchId, String cardId) async {
     final batch = data.batches.firstWhere((b) => b.id == batchId);
     batch.cards.removeWhere((c) => c.id == cardId);
@@ -202,23 +193,6 @@ class AppProvider extends ChangeNotifier {
     await _save();
   }
 
-  Future<void> undoCards(String batchId, Set<String> cardIds) async {
-    final batch = data.batches.firstWhere((b) => b.id == batchId);
-    final now = DateTime.now().millisecondsSinceEpoch;
-    for (final c in batch.cards) {
-      if (cardIds.contains(c.id)) {
-        c.sold = false;
-        c.bad = false;
-        c.soldBy = null;
-        c.soldPrice = 0;
-        c.soldDate = null;
-        c.soldNote = '';
-        c.updatedAt = now;
-      }
-    }
-    await _save();
-  }
-
   Future<void> pickCards(String batchId, List<CardItem> cards) async {
     final seller = myRole ?? '未知';
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -233,5 +207,10 @@ class AppProvider extends ChangeNotifier {
       }
     }
     await _save();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 }
