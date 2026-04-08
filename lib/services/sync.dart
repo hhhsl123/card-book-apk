@@ -8,7 +8,7 @@ class SyncService {
   /// Pull latest data from cloud
   static Future<AppData?> pull() async {
     try {
-      final resp = await http.get(Uri.parse(_url)).timeout(const Duration(seconds: 10));
+      final resp = await http.get(Uri.parse(_url)).timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200) {
         return AppData.fromJson(jsonDecode(resp.body));
       }
@@ -23,7 +23,7 @@ class SyncService {
         Uri.parse(_url),
         headers: {'Content-Type': 'application/json'},
         body: local.toJsonString(),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200) {
         return AppData.fromJson(jsonDecode(resp.body));
       }
@@ -38,7 +38,7 @@ class SyncService {
         Uri.parse(_url),
         headers: {'Content-Type': 'application/json'},
         body: data.toJsonString(),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15));
       return resp.statusCode == 200;
     } catch (_) {}
     return false;

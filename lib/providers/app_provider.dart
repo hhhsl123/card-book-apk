@@ -78,6 +78,7 @@ class AppProvider extends ChangeNotifier {
     _syncLock = true;
     try {
       syncing = true;
+      notifyListeners();
       final merged = await SyncService.merge(data);
       if (merged != null) {
         data = merged;
@@ -86,13 +87,15 @@ class AppProvider extends ChangeNotifier {
         }
         await StorageService.saveData(data);
         syncStatus = '已同步';
+      } else {
+        syncStatus = '同步失败';
       }
-      syncing = false;
-      notifyListeners();
     } catch (_) {
-      syncing = false;
+      syncStatus = '同步失败';
     } finally {
+      syncing = false;
       _syncLock = false;
+      notifyListeners();
     }
   }
 
