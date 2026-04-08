@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/data.dart';
@@ -11,7 +10,6 @@ class AppProvider extends ChangeNotifier {
   bool syncing = false;
   String syncStatus = '';
   String? syncMessage;
-  Timer? _autoSyncTimer;
   bool _syncLock = false;
   bool _pendingSave = false;
 
@@ -62,47 +60,6 @@ class AppProvider extends ChangeNotifier {
     }
     syncing = false;
     notifyListeners();
-
-    _startAutoSync();
-  }
-
-  void _startAutoSync() {
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!syncing) _silentSync();
-    });
-  }
-
-  Future<void> _silentSync() async {
-    if (_syncLock) return;
-    _syncLock = true;
-    try {
-      syncing = true;
-      notifyListeners();
-      final merged = await SyncService.merge(data);
-      if (merged != null) {
-        data = merged;
-        if (_repairDuplicateIds()) {
-          await SyncService.overwrite(data);
-        }
-        await StorageService.saveData(data);
-        syncStatus = '已同步';
-      } else {
-        syncStatus = '同步失败';
-      }
-    } catch (_) {
-      syncStatus = '同步失败';
-    } finally {
-      syncing = false;
-      _syncLock = false;
-      notifyListeners();
-    }
-  }
-
-  @override
-  void dispose() {
-    _autoSyncTimer?.cancel();
-    super.dispose();
   }
 
   // ---- Role ----
